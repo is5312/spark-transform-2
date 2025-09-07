@@ -185,7 +185,12 @@ public class DSLExecutor implements java.io.Serializable {
             }
         }
         
-        return sum;
+        // Return as Integer if the result is a whole number, otherwise as Double
+        if (sum == Math.floor(sum)) {
+            return (int) sum;
+        } else {
+            return sum;
+        }
     }
     
     private Object executeMultiply(Map<String, Object> inputRow, JsonNode transformation) {
@@ -208,7 +213,12 @@ public class DSLExecutor implements java.io.Serializable {
             }
         }
         
-        return product;
+        // Return as Integer if the result is a whole number, otherwise as Double
+        if (product == Math.floor(product)) {
+            return (int) product;
+        } else {
+            return product;
+        }
     }
     
     private Object executeConditional(Map<String, Object> inputRow, JsonNode transformation) {

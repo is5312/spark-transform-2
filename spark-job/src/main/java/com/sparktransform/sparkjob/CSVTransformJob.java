@@ -148,7 +148,8 @@ public class CSVTransformJob implements java.io.Serializable {
             new SimpleDSLMapFunction(inputDF.columns(), dslScript)
         );
         
-        // Convert back to DataFrame
+        // Create dynamic schema for transformed data - just return original for now
+        // The transformed columns will be included in the row data
         return inputDF.sparkSession().createDataFrame(transformedRDD, inputDF.schema());
     }
 
@@ -180,8 +181,21 @@ public class CSVTransformJob implements java.io.Serializable {
             // Apply DSL transformation
             Map<String, Object> transformedRow = executor.executeTransformation(rowMap, dslScript);
             
-            // Convert transformed map back to Row
-            return convertMapToRow(transformedRow, columnNames);
+            // Apply transformations to original data - update existing columns with transformed values
+            Map<String, Object> resultMap = new HashMap<>(rowMap);
+            for (Map.Entry<String, Object> entry : transformedRow.entrySet()) {
+                String targetColumn = entry.getKey();
+                Object transformedValue = entry.getValue();
+                
+                // If target column exists in original schema, update it
+                if (resultMap.containsKey(targetColumn)) {
+                    resultMap.put(targetColumn, transformedValue);
+                }
+                // If it's a new column, we'll ignore it for now since schema is fixed
+            }
+            
+            // Convert result map back to Row
+            return convertMapToRow(resultMap, columnNames);
         }
         
         /**
