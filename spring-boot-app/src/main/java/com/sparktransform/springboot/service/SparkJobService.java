@@ -170,6 +170,13 @@ public class SparkJobService {
             sparkProperties.put("spark.sql.adaptive.skewJoin.enabled", "true");
             sparkProperties.put("spark.sql.adaptive.localShuffleReader.enabled", "true");
             
+            // Additional optimizations for large file processing
+            sparkProperties.put("spark.sql.files.maxPartitionBytes", "134217728"); // 128MB per partition
+            sparkProperties.put("spark.sql.files.openCostInBytes", "4194304"); // 4MB open cost
+            sparkProperties.put("spark.sql.broadcastTimeout", "36000"); // 10 minutes for large broadcasts
+            sparkProperties.put("spark.rdd.compress", "true"); // Compress RDD storage
+            sparkProperties.put("spark.io.compression.codec", "lz4"); // Fast compression for shuffles
+            
             // Memory and caching optimizations
             sparkProperties.put("spark.sql.execution.arrow.pyspark.enabled", "false");
             sparkProperties.put("spark.sql.parquet.compression.codec", "snappy");

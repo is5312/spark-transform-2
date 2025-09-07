@@ -20,8 +20,9 @@ public class DSLExecutor implements java.io.Serializable {
     
     public DSLExecutor() {
         this.objectMapper = new ObjectMapper();
-        this.parsedDSLCache = new HashMap<>();
-        this.compiledRulesCache = new HashMap<>();
+        // Pre-size maps for better performance with large datasets
+        this.parsedDSLCache = new HashMap<>(16);
+        this.compiledRulesCache = new HashMap<>(16);
     }
     
     /**

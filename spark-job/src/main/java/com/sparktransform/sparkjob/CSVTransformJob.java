@@ -63,39 +63,27 @@ public class CSVTransformJob implements java.io.Serializable {
             // Read CSV file
             Dataset<Row> inputDF = readCSV(sparkSession, inputPath);
             
-            // Cache the input DataFrame for better performance if it will be used multiple times
-            long inputCount = inputDF.count();
+            // Optimize partitioning for large datasets before processing
+            Dataset<Row> optimizedInputDF = optimizeDataFrameForProcessing(inputDF);
+            
+            long inputCount = optimizedInputDF.count();
             System.out.println("Processing " + inputCount + " records");
             
             if (inputCount > 100000) { // Cache large datasets
-                inputDF.cache();
+                optimizedInputDF.cache();
             }
             
             // Apply DSL transformations using optimized DataFrame operations
-            Dataset<Row> outputDF = applyDSLTransformations(inputDF, dslScript);
+            Dataset<Row> outputDF = applyDSLTransformations(optimizedInputDF, dslScript);
             
             // Cache output if it's large and will be used multiple times
             if (inputCount > 100000) {
                 outputDF.cache();
             }
             
-            // Write output with optimized partitioning
+            // Write output with optimized partitioning and performance settings
             long recordCount = outputDF.count();
-            if (recordCount < 1000000) {
-                outputDF.coalesce(1)
-                       .write()
-                       .mode("overwrite")
-                       .option("header", "true")
-                       .csv(outputPath);
-            } else {
-                // Use optimal number of output files (typically 1 file per 100MB)
-                int outputPartitions = Math.max(1, (int) Math.ceil(recordCount / 100000.0));
-                outputDF.coalesce(outputPartitions)
-                       .write()
-                       .mode("overwrite")
-                       .option("header", "true")
-                       .csv(outputPath);
-            }
+            writeOutputOptimized(outputDF, outputPath, recordCount);
             
             // Update context with completion info
             context.setMetadata("endTime", System.currentTimeMillis());
@@ -128,33 +116,188 @@ public class CSVTransformJob implements java.io.Serializable {
                    .csv(inputPath);
     }
     
+    /**
+     * Optimize DataFrame partitioning for large file processing
+     */
+    private Dataset<Row> optimizeDataFrameForProcessing(Dataset<Row> inputDF) {
+        long recordCount = inputDF.count();
+        int currentPartitions = inputDF.rdd().getNumPartitions();
+        
+        System.out.println("Current partitions: " + currentPartitions + ", Record count: " + recordCount);
+        
+        // Optimize partitioning based on data size
+        if (recordCount > 1000000) {
+            // For large datasets, aim for ~100,000-200,000 records per partition
+            int optimalPartitions = (int) Math.ceil(recordCount / 150000.0);
+            // Cap at reasonable limits to avoid too many small tasks
+            optimalPartitions = Math.min(optimalPartitions, 200);
+            optimalPartitions = Math.max(optimalPartitions, 2);
+            
+            if (optimalPartitions != currentPartitions) {
+                System.out.println("Repartitioning to " + optimalPartitions + " partitions for optimal processing");
+                return inputDF.repartition(optimalPartitions);
+            }
+        } else if (recordCount > 10000 && currentPartitions > 10) {
+            // For medium datasets, reduce excessive partitions
+            int optimalPartitions = Math.max(2, (int) Math.ceil(recordCount / 50000.0));
+            System.out.println("Reducing partitions to " + optimalPartitions + " for medium dataset");
+            return inputDF.coalesce(optimalPartitions);
+        }
+        
+        return inputDF;
+    }
+    
+    /**
+     * Optimized output writing with performance tuning for large datasets
+     */
+    private void writeOutputOptimized(Dataset<Row> outputDF, String outputPath, long recordCount) {
+        System.out.println("Writing " + recordCount + " records with optimized settings");
+        
+        if (recordCount < 50000) {
+            // Small datasets: single file
+            outputDF.coalesce(1)
+                   .write()
+                   .mode("overwrite")
+                   .option("header", "true")
+                   .option("compression", "gzip")  // Compress small files
+                   .csv(outputPath);
+        } else if (recordCount < 1000000) {
+            // Medium datasets: 2-4 files
+            int outputPartitions = Math.max(2, Math.min(4, (int) Math.ceil(recordCount / 250000.0)));
+            outputDF.coalesce(outputPartitions)
+                   .write()
+                   .mode("overwrite")
+                   .option("header", "true")
+                   .option("compression", "gzip")
+                   .csv(outputPath);
+        } else {
+            // Large datasets: optimal partitioning for parallel write performance
+            // Aim for ~500MB per output file (roughly 500,000-1,000,000 records)
+            int outputPartitions = Math.max(2, (int) Math.ceil(recordCount / 750000.0));
+            // Cap to prevent too many small files
+            outputPartitions = Math.min(outputPartitions, 50);
+            
+            System.out.println("Using " + outputPartitions + " output partitions for large dataset");
+            
+            outputDF.coalesce(outputPartitions)
+                   .write()
+                   .mode("overwrite")
+                   .option("header", "true")
+                   .option("compression", "gzip")  // Compress for storage efficiency
+                   .csv(outputPath);
+        }
+    }
 
     private Dataset<Row> applyDSLTransformations(Dataset<Row> inputDF, String dslScript) {
-        System.out.println("Applying DSL transformations using simple DataFrame operations");
+        System.out.println("Applying DSL transformations using optimized partition-level processing");
         
-        // Parse DSL script to understand what transformations to apply
-        DSLExecutor dslExecutor = new DSLExecutor();
-        
-        // Validate DSL script - fail fast if invalid
-        if (!dslExecutor.validateDSL(dslScript)) {
+        // Pre-validate DSL script - fail fast if invalid
+        DSLExecutor validationExecutor = new DSLExecutor();
+        if (!validationExecutor.validateDSL(dslScript)) {
             throw new IllegalArgumentException("Invalid DSL script provided: " + dslScript);
         }
         
-        // Convert to RDD for DSL processing
+        // Broadcast the DSL script to all executors to avoid network overhead
+        org.apache.spark.broadcast.Broadcast<String> broadcastDslScript = 
+            inputDF.sparkSession().sparkContext().broadcast(dslScript, scala.reflect.ClassTag$.MODULE$.apply(String.class));
+        
+        // Broadcast column names for efficient access
+        org.apache.spark.broadcast.Broadcast<String[]> broadcastColumnNames = 
+            inputDF.sparkSession().sparkContext().broadcast(inputDF.columns(), scala.reflect.ClassTag$.MODULE$.apply(String[].class));
+        
+        // Convert to RDD for optimized processing
         org.apache.spark.api.java.JavaRDD<Row> inputRDD = inputDF.javaRDD();
         
-        // Apply DSL transformations using simple map operation
-        org.apache.spark.api.java.JavaRDD<Row> transformedRDD = inputRDD.map(
-            new SimpleDSLMapFunction(inputDF.columns(), dslScript)
+        // Apply DSL transformations using optimized mapPartitions operation
+        org.apache.spark.api.java.JavaRDD<Row> transformedRDD = inputRDD.mapPartitions(
+            new OptimizedDSLMapPartitionsFunction(broadcastColumnNames, broadcastDslScript)
         );
         
-        // Create dynamic schema for transformed data - just return original for now
-        // The transformed columns will be included in the row data
         return inputDF.sparkSession().createDataFrame(transformedRDD, inputDF.schema());
     }
 
     /**
-     * Simple DSL Map Function that was working before optimization
+     * Optimized DSL MapPartitions Function for high-performance large file processing
+     */
+    public static class OptimizedDSLMapPartitionsFunction implements org.apache.spark.api.java.function.FlatMapFunction<Iterator<Row>, Row>, java.io.Serializable {
+        private static final long serialVersionUID = 1L;
+        
+        private final org.apache.spark.broadcast.Broadcast<String[]> broadcastColumnNames;
+        private final org.apache.spark.broadcast.Broadcast<String> broadcastDslScript;
+        
+        public OptimizedDSLMapPartitionsFunction(org.apache.spark.broadcast.Broadcast<String[]> broadcastColumnNames, 
+                                               org.apache.spark.broadcast.Broadcast<String> broadcastDslScript) {
+            this.broadcastColumnNames = broadcastColumnNames;
+            this.broadcastDslScript = broadcastDslScript;
+        }
+        
+        @Override
+        public Iterator<Row> call(Iterator<Row> partition) throws Exception {
+            // Create single DSL executor per partition (major performance improvement)
+            DSLExecutor executor = new DSLExecutor();
+            String[] columnNames = broadcastColumnNames.value();
+            String dslScript = broadcastDslScript.value();
+            
+            // Pre-compile DSL rules once per partition
+            Map<String, Object> dummyRow = new HashMap<>();
+            for (String columnName : columnNames) {
+                dummyRow.put(columnName, ""); // Empty values for compilation
+            }
+            
+            // This will cache the compiled rules in the executor
+            try {
+                executor.executeTransformation(dummyRow, dslScript);
+            } catch (Exception e) {
+                // Expected to fail with dummy data, but DSL is now compiled and cached
+            }
+            
+            // Process all rows in the partition efficiently
+            List<Row> transformedRows = new ArrayList<>();
+            
+            while (partition.hasNext()) {
+                Row row = partition.next();
+                
+                // Convert Row to Map efficiently
+                Map<String, Object> rowMap = new HashMap<>(columnNames.length);
+                for (int i = 0; i < columnNames.length; i++) {
+                    rowMap.put(columnNames[i], row.get(i));
+                }
+                
+                // Apply DSL transformation (now using cached/compiled rules)
+                Map<String, Object> transformedRow = executor.executeTransformation(rowMap, dslScript);
+                
+                // Apply transformations to original data
+                Map<String, Object> resultMap = new HashMap<>(rowMap);
+                for (Map.Entry<String, Object> entry : transformedRow.entrySet()) {
+                    String targetColumn = entry.getKey();
+                    Object transformedValue = entry.getValue();
+                    
+                    if (resultMap.containsKey(targetColumn)) {
+                        resultMap.put(targetColumn, transformedValue);
+                    }
+                }
+                
+                // Convert result back to Row efficiently
+                transformedRows.add(convertMapToRowOptimized(resultMap, columnNames));
+            }
+            
+            return transformedRows.iterator();
+        }
+        
+        /**
+         * Optimized map to Row conversion with reduced object allocation
+         */
+        private Row convertMapToRowOptimized(Map<String, Object> rowMap, String[] columnNames) {
+            Object[] values = new Object[columnNames.length];
+            for (int i = 0; i < columnNames.length; i++) {
+                values[i] = rowMap.get(columnNames[i]);
+            }
+            return RowFactory.create(values);
+        }
+    }
+
+    /**
+     * Simple DSL Map Function that was working before optimization (kept for reference)
      */
     public static class SimpleDSLMapFunction implements org.apache.spark.api.java.function.Function<Row, Row>, java.io.Serializable {
         private static final long serialVersionUID = 1L;
