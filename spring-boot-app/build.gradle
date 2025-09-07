@@ -1,0 +1,66 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+// Disable dependency management from parent
+dependencyManagement {
+    imports {
+        mavenBom 'org.springframework.boot:spring-boot-dependencies:3.2.0'
+    }
+}
+
+dependencies {
+    // Spring Boot Starters
+    implementation('org.springframework.boot:spring-boot-starter-web') {
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+    }
+    implementation('org.springframework.boot:spring-boot-starter-actuator') {
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+    }
+    implementation('org.springframework.boot:spring-boot-starter-validation') {
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+    }
+    
+    // Jackson for JSON processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    
+    
+    // No Spark dependencies needed - using REST API
+    // Project dependencies
+    implementation project(':spark-job')
+    
+    // Force specific logging versions to avoid conflicts
+    implementation 'org.slf4j:slf4j-api:2.0.9'
+    implementation 'ch.qos.logback:logback-classic:1.4.11'
+    implementation 'org.apache.logging.log4j:log4j-to-slf4j:2.21.1'
+    
+    // Exclude log4j-slf4j2-impl from all configurations
+    configurations.all {
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+    }
+    
+    
+    // Force resolution strategy to avoid conflicts
+    configurations.all {
+        resolutionStrategy {
+            force 'org.slf4j:slf4j-api:2.0.9'
+            force 'ch.qos.logback:logback-classic:1.4.11'
+            force 'org.apache.logging.log4j:log4j-to-slf4j:2.21.1'
+        }
+    }
+}
+
+springBoot {
+    mainClass = 'com.sparktransform.springboot.SparkTransformApplication'
+}
+
+// Create a fat jar for Docker
+jar {
+    enabled = false
+    dependsOn bootJar
+}
+

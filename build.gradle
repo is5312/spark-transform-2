@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+allprojects {
+    group = 'com.sparktransform'
+    version = '1.0.0'
+    
+    repositories {
+        mavenCentral()
+    }
+}
+
+// Spring Boot dependency management
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    
+    dependencies {
+        // Common dependencies for all subprojects
+        implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+        implementation 'org.apache.commons:commons-lang3:3.12.0'
+        
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+    
+    test {
+        useJUnitPlatform()
+    }
+}
+
+// Root project has no dependencies
+
+// Gradle wrapper
+wrapper {
+    gradleVersion = '8.4'
+    distributionType = Wrapper.DistributionType.ALL
+}

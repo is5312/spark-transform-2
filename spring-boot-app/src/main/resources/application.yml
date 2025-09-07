@@ -1,0 +1,60 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: spark-transform-api
+
+# Spark configuration optimized for large file processing
+spark:
+  master:
+    rest:
+      url: http://spark-master:6066
+  app:
+    name: SparkTransformAPI
+  driver:
+    memory: 2g  # Adjusted for worker capacity
+  executor:
+    memory: 2g  # Adjusted for worker capacity
+    cores: 2    # Adjusted for worker capacity
+    instances: 3 # Adjusted for available workers
+
+# Logging configuration
+logging:
+  level:
+    com.sparktransform: INFO
+    org.apache.spark: WARN
+    org.springframework: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+# Docker profile configuration
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+# Spark configuration for Docker environment
+spark:
+  master:
+    rest:
+      url: http://spark-master:6066
+  app:
+    name: SparkTransformAPI
+  driver:
+    memory: 2g  # Adjusted for worker capacity
+  executor:
+    memory: 2g  # Adjusted for worker capacity
+    cores: 2    # Adjusted for worker capacity
+    instances: 3 # Adjusted for available workers

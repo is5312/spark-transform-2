@@ -1,0 +1,6 @@
+rootProject.name = 'spark-transform-cluster'
+
+include 'dsl-library'
+include 'spark-job'
+include 'spring-boot-app'
+
