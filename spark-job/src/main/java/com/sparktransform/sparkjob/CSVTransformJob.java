@@ -293,30 +293,37 @@ public class CSVTransformJob implements java.io.Serializable {
         }
         
         /**
-         * Initialize Spring Application Context with component scanning for com.ssc.isvc package
+         * Initialize Spring Application Context with component scanning and AutoConfiguration
          */
         private org.springframework.context.ApplicationContext initializeSpringContext() {
             try {
-                System.out.println("Initializing Spring context for partition...");
+                System.out.println("Initializing Spring context with AutoConfiguration for partition...");
                 
                 // Create annotation-based application context
                 org.springframework.context.annotation.AnnotationConfigApplicationContext context = 
                     new org.springframework.context.annotation.AnnotationConfigApplicationContext();
                 
+                // Set up environment and property sources for AutoConfiguration
+                configureEnvironmentForAutoConfiguration(context);
+                
                 // Configure component scanning for the specified package
                 context.scan("com.ssc.isvc");
                 
-                // Register additional configuration if needed
-                context.register(PartitionSpringConfiguration.class);
+                // Register AutoConfiguration classes
+                registerAutoConfigurationClasses(context);
                 
-                // Refresh context to initialize all beans
+                // Register additional configuration classes
+                context.register(PartitionSpringConfiguration.class);
+                context.register(AutoConfigurationEnablerConfiguration.class);
+                
+                // Refresh context to initialize all beans (this triggers AutoConfiguration)
                 context.refresh();
                 
                 // Validate that critical beans are available
                 validateSpringBeans(context);
                 
                 System.out.println("Spring context initialized successfully with " + 
-                    context.getBeanDefinitionCount() + " beans");
+                    context.getBeanDefinitionCount() + " beans and AutoConfiguration enabled");
                 
                 return context;
                 
@@ -326,6 +333,151 @@ public class CSVTransformJob implements java.io.Serializable {
                 // Return null context - transformation will proceed without Spring integration
                 return null;
             }
+        }
+        
+        /**
+         * Configure environment and property sources for AutoConfiguration
+         */
+        private void configureEnvironmentForAutoConfiguration(
+                org.springframework.context.annotation.AnnotationConfigApplicationContext context) {
+            
+            // Set active profiles for different environments
+            context.getEnvironment().setActiveProfiles("partition", "autoconfigure");
+            
+            // Add property sources for AutoConfiguration
+            org.springframework.core.env.MutablePropertySources propertySources = 
+                context.getEnvironment().getPropertySources();
+            
+            // Add system properties
+            propertySources.addLast(new org.springframework.core.env.SystemEnvironmentPropertySource(
+                "systemEnvironment", (java.util.Map<String, Object>) (java.util.Map<?, ?>) System.getenv()));
+            
+            // Add custom properties for AutoConfiguration
+            java.util.Properties autoConfigProps = new java.util.Properties();
+            autoConfigProps.setProperty("spring.autoconfigure", "true");
+            autoConfigProps.setProperty("spring.main.allow-bean-definition-overriding", "true");
+            autoConfigProps.setProperty("spring.main.lazy-initialization", "false");
+            autoConfigProps.setProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
+            autoConfigProps.setProperty("spring.redis.host", "localhost");
+            autoConfigProps.setProperty("spring.redis.port", "6379");
+            autoConfigProps.setProperty("logging.level.com.ssc.isvc", "INFO");
+            
+            propertySources.addFirst(new org.springframework.core.env.PropertiesPropertySource(
+                "autoConfigProperties", autoConfigProps));
+            
+            System.out.println("✅ Environment configured for AutoConfiguration");
+        }
+        
+        /**
+         * Register AutoConfiguration classes manually
+         */
+        private void registerAutoConfigurationClasses(
+                org.springframework.context.annotation.AnnotationConfigApplicationContext context) {
+            
+            try {
+                // Register core Spring Boot AutoConfiguration classes
+                Class<?>[] autoConfigClasses = {
+                    // DataSource AutoConfiguration
+                    org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration.class,
+                    org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration.class,
+                    
+                    // Redis AutoConfiguration  
+                    org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration.class,
+                    org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration.class,
+                    
+                    // Transaction AutoConfiguration
+                    org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration.class,
+                    
+                    // Jackson AutoConfiguration
+                    org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration.class,
+                    
+                    // Validation AutoConfiguration
+                    org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration.class
+                };
+                
+                for (Class<?> autoConfigClass : autoConfigClasses) {
+                    try {
+                        context.register(autoConfigClass);
+                        System.out.println("✅ Registered AutoConfiguration: " + autoConfigClass.getSimpleName());
+                    } catch (Exception e) {
+                        System.out.println("⚠️ Failed to register " + autoConfigClass.getSimpleName() + 
+                            ": " + e.getMessage());
+                    }
+                }
+                
+                // Load additional AutoConfiguration classes from spring.factories if available
+                loadAutoConfigurationFromFactories(context);
+                
+            } catch (Exception e) {
+                System.err.println("Error registering AutoConfiguration classes: " + e.getMessage());
+            }
+        }
+        
+        /**
+         * Load AutoConfiguration classes from META-INF/spring.factories
+         */
+        private void loadAutoConfigurationFromFactories(
+                org.springframework.context.annotation.AnnotationConfigApplicationContext context) {
+            
+            try {
+                // Load our custom AutoConfiguration classes from spring.factories
+                java.util.Properties properties = new java.util.Properties();
+                java.io.InputStream stream = context.getClassLoader()
+                    .getResourceAsStream("META-INF/spring.factories");
+                
+                if (stream != null) {
+                    properties.load(stream);
+                    stream.close();
+                    
+                    String autoConfigClasses = properties.getProperty(
+                        "org.springframework.boot.autoconfigure.EnableAutoConfiguration");
+                    
+                    if (autoConfigClasses != null) {
+                        String[] classNames = autoConfigClasses.split(",");
+                        System.out.println("Found " + classNames.length + 
+                            " custom AutoConfiguration classes in spring.factories");
+                        
+                        // Register our custom AutoConfiguration classes
+                        for (String className : classNames) {
+                            className = className.trim();
+                            try {
+                                if (isSafeAutoConfiguration(className)) {
+                                    Class<?> autoConfigClass = Class.forName(className, false, context.getClassLoader());
+                                    context.register(autoConfigClass);
+                                    System.out.println("✅ Loaded custom AutoConfiguration: " + autoConfigClass.getSimpleName());
+                                }
+                            } catch (Exception e) {
+                                // Skip problematic AutoConfiguration classes
+                                System.out.println("⚠️ Skipped " + className + ": " + e.getMessage());
+                            }
+                        }
+                    } else {
+                        System.out.println("No custom AutoConfiguration classes found in spring.factories");
+                    }
+                } else {
+                    System.out.println("No spring.factories file found - using default AutoConfiguration only");
+                }
+                
+            } catch (Exception e) {
+                System.out.println("⚠️ Could not load AutoConfiguration from spring.factories: " + e.getMessage());
+            }
+        }
+        
+        /**
+         * Check if an AutoConfiguration class is safe to load in Spark partition context
+         */
+        private boolean isSafeAutoConfiguration(String className) {
+            // Only include AutoConfiguration classes that are safe for Spark partitions
+            return className.contains("DataSource") ||
+                   className.contains("Jdbc") ||
+                   className.contains("Redis") ||
+                   className.contains("Jackson") ||
+                   className.contains("Transaction") ||
+                   className.contains("Validation") ||
+                   className.contains("Metrics") ||
+                   className.contains("Health") ||
+                   className.contains("Cache") ||
+                   className.contains("com.ssc.isvc"); // Include our custom AutoConfiguration
         }
         
         /**
@@ -425,11 +577,56 @@ public class CSVTransformJob implements java.io.Serializable {
     }
     
     /**
+     * AutoConfiguration Enabler Configuration
+     */
+    @org.springframework.context.annotation.Configuration
+    @org.springframework.boot.autoconfigure.EnableAutoConfiguration
+    @org.springframework.context.annotation.Import({
+        org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration.class
+    })
+    public static class AutoConfigurationEnablerConfiguration {
+        
+        /**
+         * Configure AutoConfiguration exclusions for Spark environment
+         */
+        @org.springframework.context.annotation.Bean
+        public org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter autoConfigurationExcludeFilter() {
+            return new org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter() {
+                @Override
+                public boolean match(org.springframework.core.type.classreading.MetadataReader metadataReader,
+                                   org.springframework.core.type.classreading.MetadataReaderFactory metadataReaderFactory)
+                        throws java.io.IOException {
+                    
+                    String className = metadataReader.getClassMetadata().getClassName();
+                    
+                    // Exclude web-related AutoConfigurations that are not suitable for Spark partitions
+                    return className.contains("Web") ||
+                           className.contains("Servlet") ||
+                           className.contains("Mvc") ||
+                           className.contains("Security") ||
+                           className.contains("Actuator") ||
+                           className.contains("Management") ||
+                           className.contains("Jmx");
+                }
+            };
+        }
+    }
+
+    /**
      * Spring Configuration for partition-level context
      */
     @org.springframework.context.annotation.Configuration
     @org.springframework.context.annotation.ComponentScan("com.ssc.isvc")
-    @org.springframework.boot.autoconfigure.EnableAutoConfiguration
+    @org.springframework.boot.autoconfigure.EnableAutoConfiguration(exclude = {
+        org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration.class
+    })
     public static class PartitionSpringConfiguration {
         
         /**

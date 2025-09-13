@@ -132,6 +132,10 @@ public class DSLExecutor implements java.io.Serializable, SpringAwareDSLExecutor
                 return executeEnrichGrpc(inputRow, rule.transformation);
             case "validate_grpc":
                 return executeValidateGrpc(inputRow, rule.transformation);
+            case "process_autoconfig":
+                return executeAutoConfigProcess(inputRow, rule.transformation);
+            case "cache_lookup":
+                return executeCacheLookup(inputRow, rule.transformation);
             default:
                 throw new IllegalArgumentException("Unsupported operation: " + rule.operation);
         }
@@ -420,6 +424,71 @@ public class DSLExecutor implements java.io.Serializable, SpringAwareDSLExecutor
         }
         
         return false; // Return false if validation fails
+    }
+    
+    /**
+     * Execute auto-configured processor operation
+     */
+    private Object executeAutoConfigProcess(Map<String, Object> inputRow, JsonNode transformation) {
+        String sourceColumn = transformation.get("source").asText();
+        Object sourceValue = inputRow.get(sourceColumn);
+        
+        if (sourceValue == null) {
+            return null;
+        }
+        
+        try {
+            // Get auto-configured PartitionDataProcessor from Spring context
+            Object dataProcessor = getSpringBean("partitionDataProcessor", Object.class);
+            if (dataProcessor != null) {
+                // Use reflection to call processData method
+                java.lang.reflect.Method method = dataProcessor.getClass()
+                    .getMethod("processData", String.class);
+                return method.invoke(dataProcessor, sourceValue.toString());
+            }
+        } catch (Exception e) {
+            System.err.println("AutoConfig processing failed: " + e.getMessage());
+        }
+        
+        return sourceValue; // Return original value if processing fails
+    }
+    
+    /**
+     * Execute cache lookup operation using auto-configured cache manager
+     */
+    private Object executeCacheLookup(Map<String, Object> inputRow, JsonNode transformation) {
+        String sourceColumn = transformation.get("source").asText();
+        Object sourceValue = inputRow.get(sourceColumn);
+        
+        if (sourceValue == null) {
+            return null;
+        }
+        
+        try {
+            // Get auto-configured PartitionCacheManager from Spring context
+            Object cacheManager = getSpringBean("partitionCacheManager", Object.class);
+            if (cacheManager != null) {
+                // Use reflection to call get method
+                java.lang.reflect.Method getMethod = cacheManager.getClass()
+                    .getMethod("get", String.class);
+                Object cachedValue = getMethod.invoke(cacheManager, sourceValue.toString());
+                
+                if (cachedValue != null) {
+                    return cachedValue;
+                } else {
+                    // If not in cache, process and cache the result
+                    String processedValue = "CACHED_" + sourceValue.toString();
+                    java.lang.reflect.Method putMethod = cacheManager.getClass()
+                        .getMethod("put", String.class, Object.class);
+                    putMethod.invoke(cacheManager, sourceValue.toString(), processedValue);
+                    return processedValue;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Cache lookup failed: " + e.getMessage());
+        }
+        
+        return sourceValue; // Return original value if cache lookup fails
     }
     
     /**

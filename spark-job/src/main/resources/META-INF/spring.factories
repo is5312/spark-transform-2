@@ -1,0 +1,9 @@
+# Spring Boot AutoConfiguration
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.ssc.isvc.config.CustomAutoConfiguration
+
+# Additional AutoConfiguration classes can be added here
+# org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+# com.ssc.isvc.config.DatabaseAutoConfiguration,\
+# com.ssc.isvc.config.CacheAutoConfiguration,\
+# com.ssc.isvc.config.SecurityAutoConfiguration
