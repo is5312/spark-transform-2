@@ -31,25 +31,28 @@ dependencies {
     // Project dependencies
     implementation project(':spark-job')
     
-    // Force specific logging versions to avoid conflicts
-    implementation 'org.slf4j:slf4j-api:2.0.9'
-    implementation 'ch.qos.logback:logback-classic:1.4.11'
-    implementation 'org.apache.logging.log4j:log4j-to-slf4j:2.21.1'
+    // Standardize on SLF4J with Logback (Spring Boot default)
+    // Force specific versions to avoid conflicts
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+    implementation 'ch.qos.logback:logback-classic:1.2.12'
     
-    // Exclude log4j-slf4j2-impl from all configurations
+    // Exclude all other logging frameworks to prevent conflicts
     configurations.all {
         exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
         exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-core'
+        exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+        exclude group: 'org.slf4j', module: 'slf4j-simple'
+        exclude group: 'commons-logging', module: 'commons-logging'
     }
     
-    
-    // Force resolution strategy to avoid conflicts
+    // Force consistent SLF4J and Logback versions
     configurations.all {
         resolutionStrategy {
-            force 'org.slf4j:slf4j-api:2.0.9'
-            force 'ch.qos.logback:logback-classic:1.4.11'
-            force 'org.apache.logging.log4j:log4j-to-slf4j:2.21.1'
+            force 'org.slf4j:slf4j-api:1.7.36'
+            force 'ch.qos.logback:logback-classic:1.2.12'
+            force 'ch.qos.logback:logback-core:1.2.12'
         }
     }
 }

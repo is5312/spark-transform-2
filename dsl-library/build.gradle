@@ -4,13 +4,18 @@ plugins {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'org.apache.commons:commons-lang3:3.12.0'
+    
+    // Spring dependencies for context integration (compileOnly to avoid packaging conflicts)
+    compileOnly 'org.springframework:spring-context:6.0.13'
+    compileOnly 'org.springframework:spring-core:6.0.13'
+    compileOnly 'org.springframework:spring-beans:6.0.13'
 }
 
 shadowJar {

@@ -42,7 +42,7 @@ public class SparkTransformDriver {
             System.setProperty("java.security.krb5.realm", "");
             System.setProperty("java.security.krb5.kdc", "");
             
-            // Java 17 JVM options to fix module access issues
+            // Java 17 JVM options to fix module access issues + logging configuration
             String jvmOptions = "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED " +
                     "--add-opens=java.base/java.lang=ALL-UNNAMED " +
                     "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED " +
@@ -59,7 +59,9 @@ public class SparkTransformDriver {
                     "--add-opens=java.base/java.nio.channels=ALL-UNNAMED " +
                     "--add-opens=java.base/java.nio.channels.spi=ALL-UNNAMED " +
                     "--add-opens=java.base/sun.security.action=ALL-UNNAMED " +
-                    "--add-opens=java.base/sun.util=ALL-UNNAMED";
+                    "--add-opens=java.base/sun.util=ALL-UNNAMED " +
+                    "-Dlog4j.configurationFile=log4j2.properties " +
+                    "-Dorg.slf4j.simpleLogger.defaultLogLevel=warn";
 
             // Create Spark session with Kryo serialization to handle SerializedLambda issues
             spark = SparkSession.builder()

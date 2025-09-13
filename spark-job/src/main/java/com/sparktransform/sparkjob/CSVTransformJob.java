@@ -1,6 +1,7 @@
 package com.sparktransform.sparkjob;
 
 import com.sparktransform.dsl.DSLExecutor;
+import com.sparktransform.dsl.SpringAwareDSLExecutor;
 import com.sparktransform.dsl.TransformationContext;
 
 import org.apache.spark.sql.Dataset;
@@ -233,6 +234,9 @@ public class CSVTransformJob implements java.io.Serializable {
         
         @Override
         public Iterator<Row> call(Iterator<Row> partition) throws Exception {
+            // Initialize Spring context and dependencies for this partition
+            org.springframework.context.ApplicationContext springContext = initializeSpringContext();
+            
             // Create single DSL executor per partition (major performance improvement)
             DSLExecutor executor = new DSLExecutor();
             String[] columnNames = broadcastColumnNames.value();
@@ -251,7 +255,7 @@ public class CSVTransformJob implements java.io.Serializable {
                 // Expected to fail with dummy data, but DSL is now compiled and cached
             }
             
-            // Process all rows in the partition efficiently
+            // Process all rows in the partition efficiently with Spring context available
             List<Row> transformedRows = new ArrayList<>();
             
             while (partition.hasNext()) {
@@ -263,8 +267,9 @@ public class CSVTransformJob implements java.io.Serializable {
                     rowMap.put(columnNames[i], row.get(i));
                 }
                 
-                // Apply DSL transformation (now using cached/compiled rules)
-                Map<String, Object> transformedRow = executor.executeTransformation(rowMap, dslScript);
+                // Apply DSL transformation with Spring context available
+                Map<String, Object> transformedRow = executeTransformationWithSpring(
+                    executor, rowMap, dslScript, springContext);
                 
                 // Apply transformations to original data
                 Map<String, Object> resultMap = new HashMap<>(rowMap);
@@ -281,7 +286,130 @@ public class CSVTransformJob implements java.io.Serializable {
                 transformedRows.add(convertMapToRowOptimized(resultMap, columnNames));
             }
             
+            // Cleanup Spring context resources
+            cleanupSpringContext(springContext);
+            
             return transformedRows.iterator();
+        }
+        
+        /**
+         * Initialize Spring Application Context with component scanning for com.ssc.isvc package
+         */
+        private org.springframework.context.ApplicationContext initializeSpringContext() {
+            try {
+                System.out.println("Initializing Spring context for partition...");
+                
+                // Create annotation-based application context
+                org.springframework.context.annotation.AnnotationConfigApplicationContext context = 
+                    new org.springframework.context.annotation.AnnotationConfigApplicationContext();
+                
+                // Configure component scanning for the specified package
+                context.scan("com.ssc.isvc");
+                
+                // Register additional configuration if needed
+                context.register(PartitionSpringConfiguration.class);
+                
+                // Refresh context to initialize all beans
+                context.refresh();
+                
+                // Validate that critical beans are available
+                validateSpringBeans(context);
+                
+                System.out.println("Spring context initialized successfully with " + 
+                    context.getBeanDefinitionCount() + " beans");
+                
+                return context;
+                
+            } catch (Exception e) {
+                System.err.println("Failed to initialize Spring context: " + e.getMessage());
+                e.printStackTrace();
+                // Return null context - transformation will proceed without Spring integration
+                return null;
+            }
+        }
+        
+        /**
+         * Validate that critical Spring beans are properly initialized
+         */
+        private void validateSpringBeans(org.springframework.context.ApplicationContext context) {
+            try {
+                // Check for DataSource (JDBC)
+                try {
+                    javax.sql.DataSource dataSource = context.getBean(javax.sql.DataSource.class);
+                    System.out.println("✅ JDBC DataSource initialized: " + dataSource.getClass().getSimpleName());
+                } catch (org.springframework.beans.factory.NoSuchBeanDefinitionException e) {
+                    System.out.println("⚠️ No JDBC DataSource found - database operations not available");
+                }
+                
+                // Check for Redis connections
+                try {
+                    Object redisTemplate = context.getBean("redisTemplate");
+                    System.out.println("✅ Redis Template initialized: " + redisTemplate.getClass().getSimpleName());
+                } catch (org.springframework.beans.factory.NoSuchBeanDefinitionException e) {
+                    System.out.println("⚠️ No Redis Template found - Redis operations not available");
+                }
+                
+                // Check for gRPC services
+                String[] grpcBeans = context.getBeanNamesForType(Object.class);
+                long grpcCount = java.util.Arrays.stream(grpcBeans)
+                    .filter(name -> name.toLowerCase().contains("grpc"))
+                    .count();
+                if (grpcCount > 0) {
+                    System.out.println("✅ gRPC services found: " + grpcCount + " beans");
+                } else {
+                    System.out.println("⚠️ No gRPC services found");
+                }
+                
+                // List all service beans
+                String[] serviceBeans = context.getBeanNamesForAnnotation(org.springframework.stereotype.Service.class);
+                System.out.println("✅ Service beans loaded: " + serviceBeans.length);
+                
+                // List all component beans
+                String[] componentBeans = context.getBeanNamesForAnnotation(org.springframework.stereotype.Component.class);
+                System.out.println("✅ Component beans loaded: " + componentBeans.length);
+                
+            } catch (Exception e) {
+                System.err.println("Error validating Spring beans: " + e.getMessage());
+            }
+        }
+        
+        /**
+         * Execute transformation with Spring context available for dependency injection
+         */
+        private Map<String, Object> executeTransformationWithSpring(
+                DSLExecutor executor, 
+                Map<String, Object> rowMap, 
+                String dslScript, 
+                org.springframework.context.ApplicationContext springContext) {
+            
+            try {
+                // If Spring context is available, inject it into the DSL executor
+                if (springContext != null && executor instanceof SpringAwareDSLExecutor) {
+                    ((SpringAwareDSLExecutor) executor).setSpringContext(springContext);
+                }
+                
+                // Execute transformation (now with Spring context available)
+                return executor.executeTransformation(rowMap, dslScript);
+                
+            } catch (Exception e) {
+                System.err.println("Error in Spring-aware transformation: " + e.getMessage());
+                // Fallback to standard transformation
+                return executor.executeTransformation(rowMap, dslScript);
+            }
+        }
+        
+        /**
+         * Cleanup Spring context resources
+         */
+        private void cleanupSpringContext(org.springframework.context.ApplicationContext springContext) {
+            try {
+                if (springContext instanceof org.springframework.context.ConfigurableApplicationContext) {
+                    ((org.springframework.context.ConfigurableApplicationContext) springContext).close();
+                    System.out.println("Spring context cleaned up successfully");
+                }
+            } catch (Exception e) {
+                System.err.println("Error cleaning up Spring context: " + e.getMessage());
+            }
         }
         
         /**
@@ -293,6 +421,55 @@ public class CSVTransformJob implements java.io.Serializable {
                 values[i] = rowMap.get(columnNames[i]);
             }
             return RowFactory.create(values);
+        }
+    }
+    
+    /**
+     * Spring Configuration for partition-level context
+     */
+    @org.springframework.context.annotation.Configuration
+    @org.springframework.context.annotation.ComponentScan("com.ssc.isvc")
+    @org.springframework.boot.autoconfigure.EnableAutoConfiguration
+    public static class PartitionSpringConfiguration {
+        
+        /**
+         * Configure JDBC DataSource if not already present
+         */
+        @org.springframework.context.annotation.Bean
+        @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+        public javax.sql.DataSource dataSource() {
+            // Configure your database connection here
+            org.springframework.boot.jdbc.DataSourceBuilder<?> builder = org.springframework.boot.jdbc.DataSourceBuilder.create();
+            
+            // Example configuration - replace with your actual database settings
+            builder.driverClassName("org.postgresql.Driver");
+            builder.url("jdbc:postgresql://localhost:5432/your_database");
+            builder.username("your_username");
+            builder.password("your_password");
+            
+            return builder.build();
+        }
+        
+        /**
+         * Configure Redis Template if not already present
+         */
+        @org.springframework.context.annotation.Bean
+        @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+        public org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate() {
+            org.springframework.data.redis.core.RedisTemplate<String, Object> template = 
+                new org.springframework.data.redis.core.RedisTemplate<>();
+            
+            // Configure Redis connection factory
+            org.springframework.data.redis.connection.jedis.JedisConnectionFactory factory = 
+                new org.springframework.data.redis.connection.jedis.JedisConnectionFactory();
+            factory.setHostName("localhost");
+            factory.setPort(6379);
+            factory.afterPropertiesSet();
+            
+            template.setConnectionFactory(factory);
+            template.setDefaultSerializer(new org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer());
+            
+            return template;
         }
     }
 
