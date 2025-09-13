@@ -27,6 +27,36 @@ subprojects {
         targetCompatibility = JavaVersion.VERSION_17
     }
     
+    /**
+     * Global logging exclusions for all subprojects to prevent SLF4J multiple providers conflicts
+     * 
+     * This configuration automatically excludes conflicting logging frameworks from ALL dependencies
+     * across ALL subprojects, eliminating the need to add exclude blocks to individual dependencies.
+     * 
+     * Excluded logging frameworks:
+     * - Logback: ch.qos.logback (logback-classic, logback-core)
+     * - Spring Boot Logging: spring-boot-starter-logging
+     * - Spring JCL: spring-jcl (Spring's commons-logging bridge)
+     * - SLF4J Implementations: slf4j-simple, slf4j-log4j12
+     * - Log4j SLF4J Bridges: log4j-to-slf4j, log4j-slf4j-impl, log4j-slf4j2-impl
+     * - Commons Logging: commons-logging
+     * 
+     * This ensures a single, consistent logging framework across the entire project
+     * and prevents the dreaded "SLF4J: Found multiple bindings" error.
+     */
+    configurations.all {
+        exclude group: 'ch.qos.logback', module: 'logback-classic'
+        exclude group: 'ch.qos.logback', module: 'logback-core'
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+        exclude group: 'org.springframework', module: 'spring-jcl'
+        exclude group: 'org.slf4j', module: 'slf4j-simple'
+        exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+        exclude group: 'commons-logging', module: 'commons-logging'
+    }
+    
     dependencies {
         // Common dependencies for all subprojects
         implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'

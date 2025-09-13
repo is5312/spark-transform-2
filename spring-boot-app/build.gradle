@@ -11,50 +11,40 @@ dependencyManagement {
     }
 }
 
+// Global exclude configurations for logging conflicts
+configurations.all {
+    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
+    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
+    exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
+    exclude group: 'org.apache.logging.log4j', module: 'log4j-core'
+    exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+    exclude group: 'org.slf4j', module: 'slf4j-simple'
+    exclude group: 'commons-logging', module: 'commons-logging'
+    
+    // Force consistent SLF4J and Logback versions
+    resolutionStrategy {
+        force 'org.slf4j:slf4j-api:1.7.36'
+        force 'ch.qos.logback:logback-classic:1.2.12'
+        force 'ch.qos.logback:logback-core:1.2.12'
+    }
+}
+
 dependencies {
-    // Spring Boot Starters
-    implementation('org.springframework.boot:spring-boot-starter-web') {
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
-    }
-    implementation('org.springframework.boot:spring-boot-starter-actuator') {
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
-    }
-    implementation('org.springframework.boot:spring-boot-starter-validation') {
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
-    }
+    // Spring Boot Starters (logging conflicts handled by global excludes)
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
     
     // Jackson for JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-    
     
     // No Spark dependencies needed - using REST API
     // Project dependencies
     implementation project(':spark-job')
     
     // Standardize on SLF4J with Logback (Spring Boot default)
-    // Force specific versions to avoid conflicts
     implementation 'org.slf4j:slf4j-api:1.7.36'
     implementation 'ch.qos.logback:logback-classic:1.2.12'
-    
-    // Exclude all other logging frameworks to prevent conflicts
-    configurations.all {
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
-        exclude group: 'org.apache.logging.log4j', module: 'log4j-core'
-        exclude group: 'org.slf4j', module: 'slf4j-log4j12'
-        exclude group: 'org.slf4j', module: 'slf4j-simple'
-        exclude group: 'commons-logging', module: 'commons-logging'
-    }
-    
-    // Force consistent SLF4J and Logback versions
-    configurations.all {
-        resolutionStrategy {
-            force 'org.slf4j:slf4j-api:1.7.36'
-            force 'ch.qos.logback:logback-classic:1.2.12'
-            force 'ch.qos.logback:logback-core:1.2.12'
-        }
-    }
 }
 
 springBoot {
