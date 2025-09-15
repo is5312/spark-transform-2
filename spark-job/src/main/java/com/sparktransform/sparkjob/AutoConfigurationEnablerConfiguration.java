@@ -50,13 +50,20 @@ public class AutoConfigurationEnablerConfiguration {
                        className.contains("Security") ||
                        className.contains("Actuator") ||
                        className.contains("Management") ||
-                       className.contains("Jmx");
+                       className.contains("Jmx") ||
+                       // Add specific library configuration classes to exclude
+                       isLibraryConfigurationToExclude(className);
                 
                 if (shouldExclude) {
                     System.out.println("🚫 AutoConfigurationEnablerConfiguration: Excluded " + className);
                 }
                 
                 return shouldExclude;
+            }
+            
+            private boolean isLibraryConfigurationToExclude(String className) {
+                // Use centralized exclusion manager for library configurations
+                return ConfigurationExclusionManager.isConfigurationExcluded(className);
             }
         };
     }

@@ -8,19 +8,8 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-// Global exclude configurations for logging conflicts
-configurations.all {
-    exclude group: 'ch.qos.logback', module: 'logback-classic'
-    exclude group: 'ch.qos.logback', module: 'logback-core'
-    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
-    exclude group: 'org.springframework', module: 'spring-jcl'
-    exclude group: 'org.slf4j', module: 'slf4j-simple'
-    exclude group: 'org.slf4j', module: 'slf4j-log4j12'
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
-    exclude group: 'commons-logging', module: 'commons-logging'
-}
+// Global exclude configurations and version forcing inherited from root build.gradle
+// Spark-specific excludes and configurations can be added here if needed
 
 dependencies {
     // DSL Library
@@ -56,6 +45,9 @@ dependencies {
     
     // Use Spark's logging framework only - SLF4J simple for compatibility
     compileOnly 'org.slf4j:slf4j-api:1.7.36'
+    
+    // Explicit Kryo 4.0.3 dependency for Spark serialization compatibility
+    implementation 'com.esotericsoftware:kryo:4.0.3'
 }
 
 shadowJar {

@@ -11,23 +11,8 @@ dependencyManagement {
     }
 }
 
-// Global exclude configurations for logging conflicts
-configurations.all {
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j2-impl'
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
-    exclude group: 'org.apache.logging.log4j', module: 'log4j-core'
-    exclude group: 'org.slf4j', module: 'slf4j-log4j12'
-    exclude group: 'org.slf4j', module: 'slf4j-simple'
-    exclude group: 'commons-logging', module: 'commons-logging'
-    
-    // Force consistent SLF4J and Logback versions
-    resolutionStrategy {
-        force 'org.slf4j:slf4j-api:1.7.36'
-        force 'ch.qos.logback:logback-classic:1.2.12'
-        force 'ch.qos.logback:logback-core:1.2.12'
-    }
-}
+// Global exclude configurations for logging conflicts (inherits from root build.gradle)
+// Additional exclusions specific to Spring Boot app can be added here if needed
 
 dependencies {
     // Spring Boot Starters (logging conflicts handled by global excludes)

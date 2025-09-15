@@ -8,16 +8,7 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-// Global exclude configurations for logging conflicts
-configurations.all {
-    exclude group: 'ch.qos.logback', module: 'logback-classic'
-    exclude group: 'ch.qos.logback', module: 'logback-core'
-    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
-    exclude group: 'org.springframework', module: 'spring-jcl'
-    exclude group: 'org.slf4j', module: 'slf4j-simple'
-    exclude group: 'org.slf4j', module: 'slf4j-log4j12'
-    exclude group: 'commons-logging', module: 'commons-logging'
-}
+// Global exclude configurations and version forcing inherited from root build.gradle
 
 dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind'

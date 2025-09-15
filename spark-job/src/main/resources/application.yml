@@ -1,0 +1,325 @@
+# Default configuration for Spark Job Module
+# This replaces hardcoded properties in SpringContextManager
+
+spring:
+  application:
+    name: spark-transform-job
+  
+  # Main Spring configuration
+  main:
+    allow-bean-definition-overriding: true
+    lazy-initialization: false
+    
+  # AutoConfiguration settings
+  autoconfigure: true
+  
+  # Database configuration (PostgreSQL)
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/spark_transform
+    username: ${DB_USERNAME:spark_user}
+    password: ${DB_PASSWORD:spark_password}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      
+  # Redis configuration
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    timeout: 2000ms
+    database: 0
+    jedis:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: -1ms
+
+# Custom partition configuration
+custom:
+  partition:
+    enabled: true
+    environment: spark-partition
+    connection-pool-size: 10
+    timeout-ms: 30000
+    advanced:
+      enabled: false
+
+# Configuration exclusions
+exclusions:
+  configurations:
+    - com.some.library.UnwantedConfiguration
+    - com.another.library.ProblematicConfig
+    - com.library.SecurityConfiguration
+  packages:
+    - com.problematic.library
+    - com.unwanted.package
+  patterns:
+    - SecurityConfig
+    - WebConfig
+    - ServletConfig
+
+# Logging configuration
+logging:
+  level:
+    com.ssc.isvc: INFO
+    com.sparktransform: INFO
+    org.springframework: WARN
+    org.apache.spark: WARN
+    root: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+# Partition Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: partition
+
+# Enhanced settings for partition processing
+custom:
+  partition:
+    enabled: true
+    environment: spark-partition-optimized
+    connection-pool-size: 20
+    timeout-ms: 45000
+    batch-size: 1000
+    max-retries: 3
+    
+# Optimized database settings for partition processing
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 10
+      connection-timeout: 20000
+      validation-timeout: 5000
+      
+  redis:
+    timeout: 1000ms
+    jedis:
+      pool:
+        max-active: 16
+        max-idle: 8
+
+logging:
+  level:
+    com.ssc.isvc: DEBUG
+    com.sparktransform: DEBUG
+
+---
+# AutoConfigure Profile Configuration  
+spring:
+  config:
+    activate:
+      on-profile: autoconfigure
+
+# Settings specifically for auto-configuration scenarios
+spring:
+  autoconfigure: true
+  main:
+    allow-bean-definition-overriding: true
+    lazy-initialization: false
+    
+# More permissive settings for auto-configuration
+custom:
+  partition:
+    enabled: true
+    environment: auto-configure
+    connection-pool-size: 15
+    timeout-ms: 60000
+    auto-detect-resources: true
+
+logging:
+  level:
+    org.springframework.boot.autoconfigure: DEBUG
+    com.sparktransform.sparkjob: DEBUG
+
+---
+# Development Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+# Development-specific settings
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/spark_transform_dev
+    username: ${DEV_DB_USERNAME:dev_user}
+    password: ${DEV_DB_PASSWORD:dev_password}
+    
+  redis:
+    host: localhost
+    port: 6379
+    database: 1  # Use different Redis database for dev
+
+custom:
+  partition:
+    enabled: true
+    environment: development
+    connection-pool-size: 5
+    timeout-ms: 30000
+    debug-enabled: true
+
+exclusions:
+  # More relaxed exclusions for development
+  configurations:
+    - com.library.SecurityConfiguration
+  patterns:
+    - WebConfig
+
+logging:
+  level:
+    com.ssc.isvc: DEBUG
+    com.sparktransform: DEBUG
+    org.springframework: INFO
+    root: DEBUG
+
+---
+# Test Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: test
+
+# Test-specific settings
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+    
+  redis:
+    host: localhost
+    port: 6379
+    database: 2  # Use different Redis database for testing
+
+custom:
+  partition:
+    enabled: false  # Disable partition processing in tests
+    environment: test
+    connection-pool-size: 2
+    timeout-ms: 10000
+
+# Minimal exclusions for testing
+exclusions:
+  configurations: []
+  packages: []
+  patterns: []
+
+logging:
+  level:
+    com.ssc.isvc: DEBUG
+    com.sparktransform: DEBUG
+    org.springframework: WARN
+    root: WARN
+
+---
+# Production Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+# Production-optimized settings
+spring:
+  datasource:
+    url: jdbc:postgresql://${PROD_DB_HOST:prod-db-host}:5432/${PROD_DB_NAME:spark_transform_prod}
+    username: ${PROD_DB_USERNAME}
+    password: ${PROD_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 20
+      connection-timeout: 15000
+      leak-detection-threshold: 60000
+      
+  redis:
+    host: ${PROD_REDIS_HOST:prod-redis-host}
+    port: ${PROD_REDIS_PORT:6379}
+    password: ${PROD_REDIS_PASSWORD:}
+    timeout: 1500ms
+    jedis:
+      pool:
+        max-active: 32
+        max-idle: 16
+        min-idle: 8
+
+custom:
+  partition:
+    enabled: true
+    environment: production
+    connection-pool-size: 50
+    timeout-ms: 30000
+    batch-size: 2000
+    max-retries: 5
+    metrics-enabled: true
+
+# Strict exclusions for production
+exclusions:
+  configurations:
+    - com.some.library.UnwantedConfiguration
+    - com.another.library.ProblematicConfig
+    - com.library.SecurityConfiguration
+    - com.library.DevConfiguration
+    - com.library.TestConfiguration
+  packages:
+    - com.problematic.library
+    - com.dev.tools
+    - com.test.utils
+  patterns:
+    - SecurityConfig
+    - WebConfig
+    - ServletConfig
+    - DevConfig
+    - TestConfig
+    - DebugConfig
+
+logging:
+  level:
+    com.ssc.isvc: INFO
+    com.sparktransform: INFO
+    org.springframework: WARN
+    org.apache.spark: WARN
+    root: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+# Docker Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+# Docker-specific settings
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/${POSTGRES_DB:spark_transform}
+    username: ${POSTGRES_USER:spark_user}
+    password: ${POSTGRES_PASSWORD:spark_password}
+    
+  redis:
+    host: ${REDIS_HOST:redis}
+    port: 6379
+
+custom:
+  partition:
+    enabled: true
+    environment: docker-container
+    connection-pool-size: 15
+    timeout-ms: 45000
+    container-optimized: true
+
+logging:
+  level:
+    com.ssc.isvc: INFO
+    com.sparktransform: INFO
+    org.springframework: WARN
+    root: INFO

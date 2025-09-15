@@ -6,7 +6,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.support.PropertiesLoaderUtils;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 import java.util.concurrent.locks.ReentrantLock;
@@ -132,32 +135,141 @@ public class SpringContextManager {
      */
     private void configureEnvironmentForAutoConfiguration(AnnotationConfigApplicationContext context) {
         // Set active profiles for different environments
-        context.getEnvironment().setActiveProfiles("partition", "autoconfigure");
+        String activeProfiles = System.getProperty("spring.profiles.active", "partition,autoconfigure");
+        String[] profiles = activeProfiles.split(",");
+        for (int i = 0; i < profiles.length; i++) {
+            profiles[i] = profiles[i].trim();
+        }
+        context.getEnvironment().setActiveProfiles(profiles);
         
         // Add property sources for AutoConfiguration
         MutablePropertySources propertySources = context.getEnvironment().getPropertySources();
         
-        // Add system properties
+        // Add system properties first (highest priority)
         propertySources.addLast(new SystemEnvironmentPropertySource(
             "systemEnvironment", (java.util.Map<String, Object>) (java.util.Map<?, ?>) System.getenv()));
         
-        // Add custom properties for AutoConfiguration
-        Properties autoConfigProps = new Properties();
-        autoConfigProps.setProperty("spring.autoconfigure", "true");
-        autoConfigProps.setProperty("spring.main.allow-bean-definition-overriding", "true");
-        autoConfigProps.setProperty("spring.main.lazy-initialization", "false");
-        autoConfigProps.setProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
-        autoConfigProps.setProperty("spring.redis.host", "localhost");
-        autoConfigProps.setProperty("spring.redis.port", "6379");
-        autoConfigProps.setProperty("logging.level.com.ssc.isvc", "INFO");
-        autoConfigProps.setProperty("custom.partition.enabled", "true");
-        autoConfigProps.setProperty("custom.partition.environment", "spark-partition");
-        autoConfigProps.setProperty("custom.partition.connectionPoolSize", "10");
-        autoConfigProps.setProperty("custom.partition.timeoutMs", "30000");
+        // Load properties from application.yml (via properties files as fallback)
+        Properties applicationProps = loadApplicationProperties();
+        if (!applicationProps.isEmpty()) {
+            propertySources.addFirst(new PropertiesPropertySource("applicationProperties", applicationProps));
+            System.out.println("✅ SpringContextManager: Loaded " + applicationProps.size() + " properties from application configuration");
+        }
         
-        propertySources.addFirst(new PropertiesPropertySource("autoConfigProperties", autoConfigProps));
+        // Add any additional runtime properties
+        Properties runtimeProps = getRuntimeProperties();
+        if (!runtimeProps.isEmpty()) {
+            propertySources.addFirst(new PropertiesPropertySource("runtimeProperties", runtimeProps));
+        }
         
-        System.out.println("✅ SpringContextManager: Environment configured for AutoConfiguration");
+        System.out.println("✅ SpringContextManager: Environment configured with profiles: " + java.util.Arrays.toString(profiles));
+    }
+    
+    /**
+     * Load properties from application.yml or fallback property files
+     */
+    private Properties loadApplicationProperties() {
+        Properties properties = new Properties();
+        
+        try {
+            // Try to load application.yml properties first (converted to .properties format)
+            // Note: In a full Spring Boot application, this would be handled automatically
+            // For this standalone context, we'll provide essential properties
+            
+            // Load from application.properties if it exists
+            ClassPathResource appPropsResource = new ClassPathResource("application.properties");
+            if (appPropsResource.exists()) {
+                Properties appProps = PropertiesLoaderUtils.loadProperties(appPropsResource);
+                properties.putAll(appProps);
+                System.out.println("✅ SpringContextManager: Loaded application.properties");
+            }
+            
+            // Load profile-specific properties
+            String activeProfiles = System.getProperty("spring.profiles.active", "partition,autoconfigure");
+            for (String profile : activeProfiles.split(",")) {
+                profile = profile.trim();
+                ClassPathResource profileResource = new ClassPathResource("application-" + profile + ".properties");
+                if (profileResource.exists()) {
+                    Properties profileProps = PropertiesLoaderUtils.loadProperties(profileResource);
+                    properties.putAll(profileProps);
+                    System.out.println("✅ SpringContextManager: Loaded application-" + profile + ".properties");
+                }
+            }
+            
+        } catch (IOException e) {
+            System.out.println("⚠️ SpringContextManager: Could not load external properties: " + e.getMessage());
+            System.out.println("⚠️ SpringContextManager: Falling back to default properties");
+        }
+        
+        // If no external properties found, provide minimal defaults
+        if (properties.isEmpty()) {
+            properties = getDefaultProperties();
+            System.out.println("⚠️ SpringContextManager: Using default fallback properties");
+        }
+        
+        return properties;
+    }
+    
+    /**
+     * Get runtime properties that can override configuration
+     */
+    private Properties getRuntimeProperties() {
+        Properties runtimeProps = new Properties();
+        
+        // Allow environment variables to override settings
+        String dbUrl = System.getenv("DATABASE_URL");
+        if (dbUrl != null) {
+            runtimeProps.setProperty("spring.datasource.url", dbUrl);
+        }
+        
+        String redisHost = System.getenv("REDIS_HOST");
+        if (redisHost != null) {
+            runtimeProps.setProperty("spring.redis.host", redisHost);
+        }
+        
+        String redisPort = System.getenv("REDIS_PORT");
+        if (redisPort != null) {
+            runtimeProps.setProperty("spring.redis.port", redisPort);
+        }
+        
+        // Allow system properties to override
+        runtimeProps.putAll(System.getProperties());
+        
+        return runtimeProps;
+    }
+    
+    /**
+     * Get default properties as fallback when external configuration is not available
+     */
+    private Properties getDefaultProperties() {
+        Properties defaultProps = new Properties();
+        
+        // Core Spring settings
+        defaultProps.setProperty("spring.autoconfigure", "true");
+        defaultProps.setProperty("spring.main.allow-bean-definition-overriding", "true");
+        defaultProps.setProperty("spring.main.lazy-initialization", "false");
+        
+        // Database settings
+        defaultProps.setProperty("spring.datasource.driver-class-name", "org.postgresql.Driver");
+        defaultProps.setProperty("spring.datasource.url", "jdbc:postgresql://localhost:5432/spark_transform");
+        defaultProps.setProperty("spring.datasource.username", "spark_user");
+        defaultProps.setProperty("spring.datasource.password", "spark_password");
+        
+        // Redis settings
+        defaultProps.setProperty("spring.redis.host", "localhost");
+        defaultProps.setProperty("spring.redis.port", "6379");
+        
+        // Logging settings
+        defaultProps.setProperty("logging.level.com.ssc.isvc", "INFO");
+        defaultProps.setProperty("logging.level.com.sparktransform", "INFO");
+        
+        // Custom partition settings
+        defaultProps.setProperty("custom.partition.enabled", "true");
+        defaultProps.setProperty("custom.partition.environment", "spark-partition");
+        defaultProps.setProperty("custom.partition.connection-pool-size", "10");
+        defaultProps.setProperty("custom.partition.timeout-ms", "30000");
+        
+        return defaultProps;
     }
     
     /**
@@ -257,6 +369,11 @@ public class SpringContextManager {
      * Check if an AutoConfiguration class is safe to load in Spark partition context
      */
     private boolean isSafeAutoConfiguration(String className) {
+        // First check if this configuration should be excluded
+        if (isConfigurationExcluded(className)) {
+            return false;
+        }
+        
         // Only include AutoConfiguration classes that are safe for Spark partitions
         return className.contains("DataSource") ||
                className.contains("Jdbc") ||
@@ -268,6 +385,14 @@ public class SpringContextManager {
                className.contains("Health") ||
                className.contains("Cache") ||
                className.contains("com.ssc.isvc"); // Include our custom AutoConfiguration
+    }
+    
+    /**
+     * Check if a configuration class should be excluded from loading
+     */
+    private boolean isConfigurationExcluded(String className) {
+        // Use centralized exclusion manager
+        return ConfigurationExclusionManager.isConfigurationExcluded(className);
     }
     
     /**
